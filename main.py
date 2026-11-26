@@ -8,7 +8,7 @@ from maze import Level, Round, Tile
 
 TITLE = "Pac-Man Maze Chase"
 ROOT = Path(__file__).resolve().parent
-DEMO = ROOT / "levels" / "demo.txt"
+DEFAULT_LEVEL = ROOT / "levels" / "config.txt"
 KEY_ART = ROOT / "assets" / "kenney_input-prompts_1.5" / "Keyboard & Mouse" / "Double"
 MAP_ART = ROOT / "assets" / "kenney_1-bit-pack" / "Tilesheet" / "monochrome-transparent_packed.png"
 DUNGEON_PACK = "0x72_DungeonTilesetII_v1.7"
@@ -72,6 +72,7 @@ class View:
         self.locked_gate = map_sprite(sheet, 0, 11, "#68838a", self.tile * 3 // 4)
         self.open_gate = map_sprite(sheet, 8, 10, MINT, self.tile * 3 // 4)
         self.player_art = actor_frames("knight_f", self.tile)
+        self.player_art_left = tuple(pygame.transform.flip(frame, True, False) for frame in self.player_art)
         self.guard_art = actor_frames("masked_orc", self.tile)
         self.chaser_art = actor_frames("imp", self.tile)
 
@@ -129,7 +130,8 @@ class View:
             self.draw_actor(self.guard_art, run.guard, frame, "#bd98ff")
         if run.chaser is not None:
             self.draw_actor(self.chaser_art, run.chaser, frame, "#ff8278")
-        self.draw_actor(self.player_art, run.player, frame, MINT)
+        player_art = self.player_art_left if run.player_facing_left else self.player_art
+        self.draw_actor(player_art, run.player, frame, MINT)
 
     def draw(self, run: Round, started: bool) -> None:
         self.screen.fill("#0a1419")
@@ -214,7 +216,7 @@ def play(level: Level) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=TITLE)
-    parser.add_argument("level", nargs="?", type=Path, default=DEMO, help="path to a text map")
+    parser.add_argument("level", nargs="?", type=Path, default=DEFAULT_LEVEL, help="path to a text map")
     args = parser.parse_args()
     try:
         level = Level.load(args.level)

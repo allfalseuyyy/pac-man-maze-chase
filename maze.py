@@ -86,6 +86,7 @@ class Round:
     def __init__(self, level: Level):
         self.level = level
         self.player = level.start
+        self.player_facing_left = False
         self.pellets = set(level.pellets)
         self.chaser = level.chaser
         self.guard = level.patrol[0] if level.patrol else None
@@ -100,6 +101,8 @@ class Round:
         destination = move(self.player, direction)
         if destination in self.level.floor:
             self.player = destination
+            if direction[0]:
+                self.player_facing_left = direction[0] < 0
         if self.caught():
             self.result = "caught"
             return
