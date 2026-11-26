@@ -1,0 +1,10 @@
+8-Bit Retro Game Sounds by Qvantor (https://chisper.qvantor.org)
+
+CC0 1.0 Universal (Public Domain Dedication)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+To the extent possible under law, the author has waived all copyright and related or neighboring rights to these
+sounds. You can copy, modify, distribute and use them, even for commercial purposes, all without asking permission
+and without giving credit.
+
+Credit is welcome, though: "Sounds by Qvantor, made in Chisper (chisper.qvantor.org)".
