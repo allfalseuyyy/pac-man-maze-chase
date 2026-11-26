@@ -90,6 +90,8 @@ class Round:
         self.pellets = set(level.pellets)
         self.chaser = level.chaser
         self.guard = level.patrol[0] if level.patrol else None
+        self.chaser_facing_left = False
+        self.guard_facing_left = False
         self.guard_goal = 1
         self.ticks = 0
         self.result: str | None = None
@@ -114,10 +116,16 @@ class Round:
 
         # Spread eight moves across 15 ticks, down from ten.
         if self.chaser is not None and (self.ticks - 1) * 8 % 15 < 8:
-            self.chaser = next_step(self.chaser, self.player, self.level.floor)
+            step = next_step(self.chaser, self.player, self.level.floor)
+            if step[0] != self.chaser[0]:
+                self.chaser_facing_left = step[0] < self.chaser[0]
+            self.chaser = step
         if self.guard is not None and self.level.patrol and self.ticks % 2 == 0:
             goal = self.level.patrol[self.guard_goal]
-            self.guard = next_step(self.guard, goal, self.level.floor)
+            step = next_step(self.guard, goal, self.level.floor)
+            if step[0] != self.guard[0]:
+                self.guard_facing_left = step[0] < self.guard[0]
+            self.guard = step
             if self.guard == goal:
                 self.guard_goal = 1 - self.guard_goal
         if self.caught():

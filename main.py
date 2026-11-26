@@ -44,7 +44,9 @@ def actor_frames(name, size):
     )
     scale = (size - 4) / max(visible.size)
     dimensions = tuple(max(1, round(length * scale)) for length in visible.size)
-    return tuple(pygame.transform.scale(frame.subsurface(visible), dimensions) for frame in frames)
+    right = tuple(pygame.transform.scale(frame.subsurface(visible), dimensions) for frame in frames)
+    left = tuple(pygame.transform.flip(frame, True, False) for frame in right)
+    return right, left
 
 
 class View:
@@ -72,7 +74,6 @@ class View:
         self.locked_gate = map_sprite(sheet, 0, 11, "#68838a", self.tile * 3 // 4)
         self.open_gate = map_sprite(sheet, 8, 10, MINT, self.tile * 3 // 4)
         self.player_art = actor_frames("knight_f", self.tile)
-        self.player_art_left = tuple(pygame.transform.flip(frame, True, False) for frame in self.player_art)
         self.guard_art = actor_frames("masked_orc", self.tile)
         self.chaser_art = actor_frames("imp", self.tile)
 
@@ -95,12 +96,13 @@ class View:
         x, y = tile
         return pygame.Rect(self.left + x * self.tile, BOARD_TOP + y * self.tile, self.tile, self.tile)
 
-    def draw_actor(self, frames, tile, frame, color):
+    def draw_actor(self, frames, tile, frame, color, facing_left):
         x, y = self.cell(tile).center
         ring = pygame.Rect(0, 0, self.tile - 4, max(5, self.tile // 4))
         ring.center = (x, y + self.tile // 3)
         pygame.draw.ellipse(self.screen, color, ring, 1)
-        image = frames[frame]
+        right, left = frames
+        image = (left if facing_left else right)[frame]
         self.screen.blit(image, image.get_rect(center=(x, y)))
 
     def board(self, run: Round) -> None:
@@ -127,11 +129,10 @@ class View:
 
         frame = run.ticks % 4
         if run.guard is not None:
-            self.draw_actor(self.guard_art, run.guard, frame, "#bd98ff")
+            self.draw_actor(self.guard_art, run.guard, frame, "#bd98ff", run.guard_facing_left)
         if run.chaser is not None:
-            self.draw_actor(self.chaser_art, run.chaser, frame, "#ff8278")
-        player_art = self.player_art_left if run.player_facing_left else self.player_art
-        self.draw_actor(player_art, run.player, frame, MINT)
+            self.draw_actor(self.chaser_art, run.chaser, frame, "#ff8278", run.chaser_facing_left)
+        self.draw_actor(self.player_art, run.player, frame, MINT, run.player_facing_left)
 
     def draw(self, run: Round, started: bool) -> None:
         self.screen.fill("#0a1419")
