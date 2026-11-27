@@ -61,7 +61,7 @@ class View:
         self.height = max(400, BOARD_TOP + level.height * self.tile + 64)
         self.left = (self.width - board_width) // 2
         self.screen = pygame.display.set_mode((self.width, self.height))
-        pygame.display.set_caption(f"吃豆人迷宫追逐 · {TITLE}")
+        pygame.display.set_caption(f"{TITLE}")
         self.heading = pygame.font.Font(None, 42)
         self.body = pygame.font.Font(None, 24)
         self.small = pygame.font.Font(None, 20)
