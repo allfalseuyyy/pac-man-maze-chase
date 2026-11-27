@@ -141,7 +141,7 @@ class View:
     def draw(self, run: Round) -> None:
         self.screen.fill("#0a1419")
         self.label(TITLE, self.heading, INK, topleft=(28, 25))
-        self.label(f"PELLETS  {len(run.level.pellets) - len(run.pellets)} / {len(run.level.pellets)}",
+        self.label(f"COINS  {len(run.level.pellets) - len(run.pellets)} / {len(run.level.pellets)}",
                    self.small, GOLD, midleft=(28, 84))
         self.label("EXIT LOCKED" if run.pellets else "EXIT OPEN", self.small,
                    MUTED if run.pellets else MINT, midright=(self.width - 28, 84))
