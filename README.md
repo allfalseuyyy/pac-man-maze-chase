@@ -30,4 +30,6 @@ Esc | 打开设置
 方向键或 WASD | 导航 UI
 
 ## 实机演示
-[点击观看演示视频](/display/演示视频.mp4)
+https://github.com/user-attachments/assets/fa15a4f7-dfef-4d1b-9e02-d8e44ed6a3e8
+
+[点此可下载高清演示视频](/display/演示视频.mp4)
