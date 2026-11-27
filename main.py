@@ -332,7 +332,7 @@ class Game:
             if self.run.result == "escaped":
                 view.overlay("You escaped", "", "Play again")
             else:
-                view.overlay("Caught！", "", "Try again")
+                view.overlay("Caught", "", "Try again")
         pygame.display.flip()
 
 

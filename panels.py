@@ -11,12 +11,16 @@ MINT = "#66ead3"
 
 
 @cache
+def chinese_hint_font() -> pygame.font.Font:
+    return pygame.font.SysFont("microsoftyahei", 15)
+
+
+@cache
 def panel_image(name: str, size: tuple[int, int], tint: str) -> pygame.Surface:
     source = pygame.image.load(ART / name).convert_alpha()
     source.fill(tint, special_flags=pygame.BLEND_RGBA_MULT)
     width, height = size
     image = pygame.Surface(size, pygame.SRCALPHA)
-    # The 48 px source contains nine 16 px tiles. Keep the borders at native size.
     for row, (y, h) in enumerate(((0, 16), (16, height - 32), (height - 16, 16))):
         for column, (x, w) in enumerate(((0, 16), (16, width - 32), (width - 16, 16))):
             tile = source.subsurface((column * 16, row * 16, 16, 16))
@@ -120,8 +124,10 @@ class Menu:
                 screen.blit(value, value.get_rect(midright=(row.right - 15, row.centery)))
             else:
                 screen.blit(label, label.get_rect(center=row.center))
+        hint_font = small
         if len(self.options) > self.VISIBLE:
-            hint = f"{self.selected + 1} / {len(self.options)}    |    Use arrows or scroll"
+            hint = f"{self.selected + 1} / {len(self.options)}    |    使用方向键或滚轮"
+            hint_font = chinese_hint_font()
         if hint:
-            footer = small.render(hint, True, MUTED)
+            footer = hint_font.render(hint, True, MUTED)
             screen.blit(footer, footer.get_rect(center=(card.centerx, card.bottom - 23)))

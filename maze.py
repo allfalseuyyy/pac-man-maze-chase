@@ -114,7 +114,6 @@ class Round:
             self.result = "escaped"
             return
 
-        # Spread eight moves across 15 ticks, down from ten.
         if self.chaser is not None and (self.ticks - 1) * 8 % 15 < 8:
             step = next_step(self.chaser, self.player, self.level.floor)
             if step[0] != self.chaser[0]:
