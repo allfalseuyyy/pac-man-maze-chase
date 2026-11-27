@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pygame
 
-from maze import Level, Round, Tile
-from panels import Menu, draw_panel
+from maze import Level, Round, Tile, move
+from panels import Menu, draw_panel, panel_image
 
 
 TITLE = "Pac-Man Maze Chase"
@@ -149,6 +149,11 @@ class View:
         self.key_prompts(self.height - 32, (MOVE_ICONS, "Move"), (("r",), "Restart"),
                          (("escape",), "Settings"))
 
+    def overlay_button(self, has_detail: bool) -> pygame.Rect:
+        button = pygame.Rect(0, 0, 220, 42)
+        button.center = (self.width // 2, self.height // 2 + (33 if has_detail else 23))
+        return button
+
     def overlay(self, headline: str, detail: str, action: str) -> None:
         x, y = self.width // 2, self.height // 2
         card = pygame.Rect(0, 0, 520, 156)
@@ -157,7 +162,9 @@ class View:
         self.label(headline, self.heading, MINT, center=(x, y - (34 if detail else 18)))
         if detail:
             self.label(detail, self.body, INK, center=(x, y - 3))
-        self.key_prompts(y + (33 if detail else 23), (("return",), action))
+        button = self.overlay_button(bool(detail))
+        self.screen.blit(panel_image("Colored/blue.png", button.size, "#5c9aab"), button)
+        self.key_prompts(button.centery, (("return",), action))
 
 
 class GameAudio:
@@ -210,7 +217,6 @@ class Game:
     def change_page(self, page: str) -> None:
         self.page = page
         self.elapsed = 0
-        self.held.clear()
         self.pending_direction = None
 
     def open_level(self, level: Level) -> None:
@@ -250,8 +256,16 @@ class Game:
         if event.type == pygame.WINDOWFOCUSLOST:
             self.held.clear()
             self.pending_direction = None
-        if event.type == pygame.KEYUP:
+        elif event.type == pygame.WINDOWFOCUSGAINED:
+            pressed = pygame.key.get_pressed()
+            self.held = {key: direction for key, direction in KEYS.items() if pressed[key]}
+        elif event.type == pygame.KEYUP:
             self.held.pop(event.key, None)
+        elif event.type == pygame.KEYDOWN and event.key in KEYS:
+            direction = KEYS[event.key]
+            self.held[event.key] = direction
+            if self.page == "playing":
+                self.pending_direction = direction
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             settings = self.menus["settings"]
             settings.dragging = False
@@ -264,17 +278,25 @@ class Game:
             return
         if self.page in self.menus:
             self.handle_menu(event, self.menus[self.page])
-        elif event.type == pygame.KEYDOWN:
-            if self.page == "intro" and event.key == pygame.K_RETURN:
-                self.audio.play("game-start")
-                self.change_page("playing")
-            elif (self.page == "result" and event.key == pygame.K_RETURN) or (
-                self.page in ("playing", "result") and event.key == pygame.K_r
-            ):
+            return
+        if self.page in ("intro", "result"):
+            confirm = event.type == pygame.KEYDOWN and event.key in (
+                pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE,
+            )
+            click = (
+                event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
+                and self.view.overlay_button(self.page == "intro").collidepoint(event.pos)
+            )
+            if confirm or click:
+                if self.page == "intro":
+                    self.audio.play("game-start")
+                    self.change_page("playing")
+                else:
+                    self.open_level(self.run.level)
+                return
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+            if self.page in ("playing", "result"):
                 self.open_level(self.run.level)
-            elif self.page == "playing" and event.key in KEYS:
-                self.pending_direction = KEYS[event.key]
-                self.held[event.key] = self.pending_direction
 
     def update(self, dt: int) -> None:
         if self.page != "playing":
@@ -283,7 +305,12 @@ class Game:
         if self.elapsed < TICK_MS:
             return
         self.elapsed -= TICK_MS
-        direction = self.pending_direction or next(reversed(self.held.values()), (0, 0))
+        directions = (self.pending_direction, *reversed(self.held.values()))
+        direction = next(
+            (step for step in directions
+             if step is not None and move(self.run.player, step) in self.run.level.floor),
+            (0, 0),
+        )
         self.pending_direction = None
         before = len(self.run.pellets)
         self.run.tick(direction)
