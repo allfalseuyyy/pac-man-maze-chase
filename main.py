@@ -1,9 +1,11 @@
 import argparse
+import sys
 from pathlib import Path
 
 import pygame
 
 from maze import Level, Round, Tile
+from panels import Menu, draw_panel
 
 
 TITLE = "Pac-Man Maze Chase"
@@ -13,6 +15,8 @@ KEY_ART = ROOT / "assets" / "kenney_input-prompts_1.5" / "Keyboard & Mouse" / "D
 MAP_ART = ROOT / "assets" / "kenney_1-bit-pack" / "Tilesheet" / "monochrome-transparent_packed.png"
 DUNGEON_PACK = "0x72_DungeonTilesetII_v1.7"
 ACTOR_ART = ROOT / "assets" / DUNGEON_PACK / DUNGEON_PACK / "frames"
+AUDIO_ART = ROOT / "assets" / "audio" / "Chisper 8-Bit Retro Game Sounds"
+INSTRUCTIONS = "Collect every coin! and try to Escape successfully!"
 MOVE_ICONS = ("arrow_up", "arrow_left", "arrow_down", "arrow_right")
 TICK_MS = 145
 BOARD_TOP = 116
@@ -54,7 +58,7 @@ class View:
         self.tile = min(32, 880 // level.width, 512 // level.height)
         board_width = level.width * self.tile
         self.width = max(600, board_width + 56)
-        self.height = BOARD_TOP + level.height * self.tile + 64
+        self.height = max(400, BOARD_TOP + level.height * self.tile + 64)
         self.left = (self.width - board_width) // 2
         self.screen = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption(f"吃豆人迷宫追逐 · {TITLE}")
@@ -134,7 +138,7 @@ class View:
             self.draw_actor(self.chaser_art, run.chaser, frame, "#ff8278", run.chaser_facing_left)
         self.draw_actor(self.player_art, run.player, frame, MINT, run.player_facing_left)
 
-    def draw(self, run: Round, started: bool) -> None:
+    def draw(self, run: Round) -> None:
         self.screen.fill("#0a1419")
         self.label(TITLE, self.heading, INK, topleft=(28, 25))
         self.label(f"PELLETS  {len(run.level.pellets) - len(run.pellets)} / {len(run.level.pellets)}",
@@ -143,87 +147,209 @@ class View:
                    MUTED if run.pellets else MINT, midright=(self.width - 28, 84))
         self.board(run)
         self.key_prompts(self.height - 32, (MOVE_ICONS, "Move"), (("r",), "Restart"),
-                         (("escape",), "Quit"))
-        if not started or run.result:
-            if run.result == "escaped":
-                self.overlay("You escaped", "", "Play again")
-            elif run.result == "caught":
-                self.overlay("Caught", "", "Try again")
-            else:
-                self.overlay("Collect every pellet", "Reach the gate to escape", "Start")
-        pygame.display.flip()
+                         (("escape",), "Settings"))
 
     def overlay(self, headline: str, detail: str, action: str) -> None:
-        shade = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
-        shade.fill((4, 9, 14, 182))
-        self.screen.blit(shade, (0, 0))
         x, y = self.width // 2, self.height // 2
-        card = pygame.Rect(0, 0, 410, 132)
+        card = pygame.Rect(0, 0, 520, 156)
         card.center = (x, y)
-        pygame.draw.rect(self.screen, "#15262d", card, border_radius=12)
-        pygame.draw.rect(self.screen, "#385359", card, width=1, border_radius=12)
+        draw_panel(self.screen, card)
         self.label(headline, self.heading, MINT, center=(x, y - (34 if detail else 18)))
         if detail:
             self.label(detail, self.body, INK, center=(x, y - 3))
         self.key_prompts(y + (33 if detail else 23), (("return",), action))
 
 
-def play(level: Level) -> None:
+class GameAudio:
+    def __init__(self):
+        self.volume = 0.7
+        self.sounds = {}
+        try:
+            pygame.mixer.init()
+        except pygame.error as error:
+            print(f"Audio unavailable: {error}", file=sys.stderr)
+            return
+        for name in ("coin-pickup", "power-up", "lose-life", "level-complete",
+                     "menu-select", "game-start"):
+            file = AUDIO_ART / f"8-bit-{name}.wav"
+            try:
+                self.sounds[name] = pygame.mixer.Sound(file)
+            except (pygame.error, OSError) as error:
+                print(f"Could not load {file.name}: {error}", file=sys.stderr)
+        self.set_volume(self.volume)
+
+    def set_volume(self, value: float) -> None:
+        self.volume = value
+        for sound in self.sounds.values():
+            sound.set_volume(value)
+
+    def play(self, name: str) -> None:
+        sound = self.sounds.get(name)
+        if sound is not None:
+            sound.play()
+
+
+class Game:
+    def __init__(self, levels: list[Level], direct: bool):
+        self.levels = levels
+        self.run = Round(levels[0])
+        self.view = View(levels[0])
+        self.audio = GameAudio()
+        self.page = "intro" if direct else "home"
+        self.previous_page = self.page
+        level_options = tuple(f"Level {index + 1}" for index in range(len(levels)))
+        self.menus = {
+            "home": Menu(TITLE, ("Play", "Exit Game")),
+            "levels": Menu("Select Level", (*level_options, "Back")),
+            "settings": Menu("Settings", ("Volume", "Main Menu", "Exit Game"), self.audio.volume),
+        }
+        self.elapsed = 0
+        self.held: dict[int, Tile] = {}
+        self.pending_direction: Tile | None = None
+
+    def change_page(self, page: str) -> None:
+        self.page = page
+        self.elapsed = 0
+        self.held.clear()
+        self.pending_direction = None
+
+    def open_level(self, level: Level) -> None:
+        if level is not self.run.level:
+            self.view = View(level)
+        self.run = Round(level)
+        self.change_page("intro")
+
+    def handle_menu(self, event: pygame.event.Event, menu: Menu) -> None:
+        option = menu.handle(event, self.view.screen)
+        if menu.volume is not None and menu.volume != self.audio.volume:
+            self.audio.set_volume(menu.volume)
+            if event.type != pygame.MOUSEMOTION:
+                self.audio.play("menu-select")
+        if option is None:
+            return
+        if self.page == "settings":
+            if option == 1:
+                self.audio.play("menu-select")
+                self.change_page("home")
+            elif option == 2:
+                self.change_page("quit")
+        elif self.page == "home":
+            self.audio.play("menu-select")
+            self.change_page("levels" if option == 0 else "quit")
+        else:
+            self.audio.play("menu-select")
+            if option == len(self.levels):
+                self.change_page("home")
+            else:
+                self.open_level(self.levels[option])
+
+    def handle(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.QUIT:
+            self.change_page("quit")
+            return
+        if event.type == pygame.WINDOWFOCUSLOST:
+            self.held.clear()
+            self.pending_direction = None
+        if event.type == pygame.KEYUP:
+            self.held.pop(event.key, None)
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            settings = self.menus["settings"]
+            settings.dragging = False
+            if self.page == "settings":
+                self.change_page(self.previous_page)
+            else:
+                self.previous_page = self.page
+                settings.focus(0)
+                self.change_page("settings")
+            return
+        if self.page in self.menus:
+            self.handle_menu(event, self.menus[self.page])
+        elif event.type == pygame.KEYDOWN:
+            if self.page == "intro" and event.key == pygame.K_RETURN:
+                self.audio.play("game-start")
+                self.change_page("playing")
+            elif (self.page == "result" and event.key == pygame.K_RETURN) or (
+                self.page in ("playing", "result") and event.key == pygame.K_r
+            ):
+                self.open_level(self.run.level)
+            elif self.page == "playing" and event.key in KEYS:
+                self.pending_direction = KEYS[event.key]
+                self.held[event.key] = self.pending_direction
+
+    def update(self, dt: int) -> None:
+        if self.page != "playing":
+            return
+        self.elapsed += min(dt, TICK_MS)
+        if self.elapsed < TICK_MS:
+            return
+        self.elapsed -= TICK_MS
+        direction = self.pending_direction or next(reversed(self.held.values()), (0, 0))
+        self.pending_direction = None
+        before = len(self.run.pellets)
+        self.run.tick(direction)
+        if self.run.result:
+            self.audio.play("level-complete" if self.run.result == "escaped" else "lose-life")
+            self.change_page("result")
+        elif len(self.run.pellets) < before:
+            self.audio.play("coin-pickup" if self.run.pellets else "power-up")
+
+    def draw(self) -> None:
+        view = self.view
+        view.draw(self.run)
+        if self.page in self.menus:
+            hint = "Esc to go back" if self.page == "settings" else ""
+            self.menus[self.page].draw(view.screen, view.heading, view.body, view.small, hint)
+        elif self.page == "intro":
+            view.overlay("How to Play", INSTRUCTIONS, "Start")
+        elif self.page == "result":
+            if self.run.result == "escaped":
+                view.overlay("You escaped", "", "Play again")
+            else:
+                view.overlay("Caught", "", "Try again")
+        pygame.display.flip()
+
+
+def play(levels: list[Level], direct: bool = False) -> None:
     pygame.display.init()
     pygame.font.init()
     try:
-        view = View(level)
+        game = Game(levels, direct)
         clock = pygame.time.Clock()
-        run = Round(level)
-        started = False
-        elapsed = 0
-        held: dict[int, Tile] = {}
-        pending_direction: Tile | None = None
-
-        while True:
-            elapsed += min(clock.tick(60), TICK_MS)
+        while game.page != "quit":
+            dt = clock.tick(60)
             for event in pygame.event.get():
-                if event.type == pygame.QUIT:
+                game.handle(event)
+                if game.page == "quit":
                     return
-                if event.type == pygame.WINDOWFOCUSLOST:
-                    held.clear()
-                    pending_direction = None
-                if event.type == pygame.KEYUP:
-                    held.pop(event.key, None)
-                if event.type != pygame.KEYDOWN:
-                    continue
-                if event.key == pygame.K_ESCAPE:
-                    return
-                if event.key == pygame.K_r or (
-                    event.key == pygame.K_RETURN and (not started or run.result)
-                ):
-                    run = Round(level)
-                    started = True
-                    elapsed = 0
-                    pending_direction = None
-                if event.key in KEYS:
-                    pending_direction = KEYS[event.key]
-                    held[event.key] = pending_direction
-
-            if started and elapsed >= TICK_MS:
-                elapsed -= TICK_MS
-                direction = pending_direction or next(reversed(held.values()), (0, 0))
-                run.tick(direction)
-                pending_direction = None
-            view.draw(run, started)
+            game.update(dt)
+            game.draw()
     finally:
         pygame.quit()
 
 
+def available_levels() -> list[Level]:
+    files = sorted(DEFAULT_LEVEL.parent.glob("*.txt"),
+                   key=lambda file: (file != DEFAULT_LEVEL, file.name.casefold()))
+    levels = []
+    for file in files:
+        try:
+            levels.append(Level.load(file))
+        except (OSError, ValueError) as error:
+            print(f"Skipping {file.name}: {error}", file=sys.stderr)
+    return levels
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=TITLE)
-    parser.add_argument("level", nargs="?", type=Path, default=DEFAULT_LEVEL, help="path to a text map")
+    parser.add_argument("level", nargs="?", type=Path, help="open a text map directly")
     args = parser.parse_args()
     try:
-        level = Level.load(args.level)
+        levels = [Level.load(args.level)] if args.level else available_levels()
     except (OSError, ValueError) as error:
         parser.error(str(error))
-    play(level)
+    if not levels:
+        parser.error(f"No valid maps in {DEFAULT_LEVEL.parent}")
+    play(levels, direct=args.level is not None)
 
 
 if __name__ == "__main__":
